@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "GAFAcraft 铁路站牌生成器",
-  description: "自定义地铁站内站牌、国铁悬挂站牌与站台头尾牌，支持换乘线路、终点标识和多套广东铁路视觉体系。",
+  description: "GAFAcraft 标识工坊：综合线路牌、悬挂站名牌、站台乘车牌与换乘导向牌，支持原创风格、像素字体、方块背景、文字配色和 PNG / SVG 导出。",
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",

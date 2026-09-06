@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Workshop from "./workshop";
 import {
   ArrowLeftRight,
   Download,
@@ -1054,6 +1055,11 @@ function RoadSign({ data }: { data: RoadData }) {
 }
 
 export default function Home() {
+  const [legacy, setLegacy] = useState(false);
+  return legacy ? <><div className="legacy-return"><Button onClick={() => setLegacy(false)}>← 返回原创工坊</Button><span>旧版模板 · 原有线路与排版</span></div><LegacyHome /></> : <Workshop onLegacy={() => setLegacy(true)} />;
+}
+
+function LegacyHome() {
   const [systemId] = useState<SystemId>("station");
   const [styleId, setStyleId] = useState<StyleId>("guangzhou");
   const [mode, setMode] = useState<SignMode>("station");
