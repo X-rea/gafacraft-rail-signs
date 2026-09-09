@@ -25,16 +25,32 @@ export function WorkshopSign({ station: d, appearance: a, theme, purpose, transf
     const columns = Math.min(2, lines.length), gap = 8, cell = (width - gap * (columns - 1)) / columns;
     return <g>{lines.map((line, i) => <g key={line.id} transform={`translate(${x + i % columns * (cell + gap)} ${y + Math.floor(i / columns) * 32})`}><rect width={cell} height={27} rx={pixel ? 0 : 3} fill={line.color}/>{text(line.name || '未命名线路', cell/2, 20, 17, cell-12, contrastInk(line.color), 'middle')}</g>)}</g>;
   }
-  function route(x: number, y: number, width: number) {
-    if (!a.showRoute) return null;
-    y = Math.min(y, 264);
-    const pts = [{ cn:d.previous,en:d.previousEn,slot:'previous' },{cn:d.cn.replace(/站$/, ''),en:d.en.replace(/ STATION$/, ''),slot:'current'},{cn:d.next,en:d.nextEn,slot:'next'}];
-    return <g><path d={`M${x} ${y}H${x+width}`} stroke={accent} strokeWidth={pixel ? 8 : 5}/>{a.showArrow && arrow(x+width+28,y,'right',.65)}{pts.map((s,i) => <g key={s.slot}>
-      {s.cn && (pixel ? <rect x={x+i*width/2-9} y={y-9} width={18} height={18} fill={i===1?accent:fg} stroke={fg} strokeWidth={3}/> : <circle cx={x+i*width/2} cy={y} r={10} fill={i===1?accent:a.background} stroke={accent} strokeWidth={4}/>)}
-      {text(s.cn,x+i*width/2,y+35,25,width/2-35,fg,'middle')}
-      {a.showEnglish && text(s.en,x+i*width/2,y+57,13,width/2-30,muted,'middle')}
-      {badges(transfers.filter(t=>t.slot===s.slot && t.slot!=='current'),x+i*width/2-85,y+66,170)}
+  function largeTransfers(x:number,y:number,width:number,height:number) {
+    if (!current.length) return null;
+    const rows=Math.ceil(current.length/2), columns=current.length===1?1:2;
+    const cell=(width-8*(columns-1))/columns, rowH=(height-6*(rows-1))/rows;
+    return <g>{current.map((line,i)=><g key={line.id} transform={`translate(${x+(i%columns)*(cell+8)} ${y+Math.floor(i/columns)*(rowH+6)})`}>
+      <rect width={cell} height={rowH} rx={pixel?0:10} fill={line.color}/>
+      {text('换乘 '+(line.name||'未命名线路'),cell/2,rowH*.73,Math.min(54,rowH*.65),cell-20,contrastInk(line.color),'middle')}
     </g>)}</g>;
+  }
+  function referenceRoute(x:number,y:number,width:number,above=false) {
+    if(!a.showRoute)return null;
+    const points=[{cn:d.previous,en:d.previousEn,slot:'previous'},{cn:d.cn.replace(/站$/,''),en:d.en.replace(/ STATION$/,''),slot:'current'},{cn:d.next,en:d.nextEn,slot:'next'}];
+    const hasAdjacent=transfers.some(t=>t.slot!=='current');
+    const lineY=hasAdjacent&&!above?y-22:y;
+    return <g>
+      <path d={`M${x} ${lineY}H${x+width}`} stroke={accent} strokeWidth={pixel?9:6}/>
+      {theme==='sidebar'&&<path d={`M${x+width/2} ${lineY}H${x+width+72}`} stroke={fg} strokeWidth={6}/>}
+      {!pixel&&a.showArrow&&arrow(x+width+72,lineY,'right',.9,theme==='sidebar'?fg:accent)}
+      {points.map((p,i)=>{const px=x+i*width/2;return <g key={p.slot}>
+        {p.cn&&(pixel?<rect x={px-13} y={lineY-13} width={26} height={26} fill={i===1?accent:fg} stroke={fg} strokeWidth={5}/>:<circle cx={px} cy={lineY} r={15} fill={i===1?accent:a.background} stroke={fg} strokeWidth={4}/>)}
+        {text(p.cn,px,above?lineY-46:lineY+47,above?36:32,width/2-35,fg,'middle')}
+        {a.showEnglish&&text(p.en,px,above?lineY-24:lineY+68,above?21:18,width/2-28,muted,'middle')}
+        {badges(transfers.filter(t=>t.slot===p.slot&&t.slot!=='current'),px-85,above?lineY-112:lineY+77,170)}
+      </g>})}
+      {theme==='modern'&&text(d.destination,36,280,25,550,accent)}
+    </g>;
   }
   const platform = [d.platform && `${d.platform}站台`,d.track && `${d.track}股道`].filter(Boolean).join(' · ');
   const title = d.cn || '未命名站';
@@ -52,18 +68,52 @@ export function WorkshopSign({ station: d, appearance: a, theme, purpose, transf
       {heritage ? <>{text(title,600,230,130,1080,fg,'middle',true)}{a.showEnglish && text(d.en,70,325,28,820,muted)}{text(d.line,1130,325,34,230,accent,'end')}</> : <>{text(title,sidebar?250:60,225,126,sidebar?880:870,fg,'start',true)}{a.showEnglish && text(d.en,sidebar?254:64,300,31,sidebar?850:840,muted)}{text(d.line,sidebar?98:1098,218,40,160,transparent?accent:ink,'middle')}</>}
     </>}
     {purpose === 'comprehensive' && <>
-      {sidebar && !transparent && <rect width={190} height={400} fill={accent}/>}
-      {sidebar ? <>{text(d.line,95,145,50,154,transparent?accent:ink,'middle')}{text(d.code,95,205,23,150,transparent?muted:ink,'middle')}{text(platform,95,278,23,155,transparent?fg:ink,'middle')}{text(title,235,133,92,625,fg,'start',true)}{a.showEnglish && text(d.en,238,180,25,610,muted)}{text(d.operator,1160,36,17,490,muted,'end')}{text('本站换乘',920,85,16,235,muted)}{badges(current,920,99,240)}{text(d.destination,1160,249,21,450,fg,'end')}{route(280,279,790)}{text(d.status,238,230,19,230,accent)}{a.showEnglish && text(d.statusEn,475,230,13,200,muted)}</> : heritage ? <>
-        {text(d.line,40,49,25,220,accent)}{text(d.code,40,81,18,210,muted)}{text(d.operator,1160,39,16,330,muted,'end')}
-        {text(title,600,139,96,660,fg,'middle',true)}{a.showEnglish && text(d.en,600,183,28,650,muted,'middle')}
-        {text(platform,40,223,25,285)}{text('本站换乘',928,108,16,220,muted)}{badges(current,930,122,230)}
-        {text(d.destination,600,231,22,450,accent,'middle')}{text(d.status,1160,226,19,210,accent,'end')}{route(175,278,850)}
+      {sidebar && !transparent && <rect width={pixel?154:250} height={400} fill={accent}/>}
+      {pixel ? <>
+        {text(d.line.replace(/号线$/, ''),77,184,160,134,transparent?accent:ink,'middle')}
+        {text(d.line.endsWith('号线')?'号线':'',77,256,52,132,transparent?accent:ink,'middle')}
+        <path d="M18 294H136" stroke={transparent?accent:ink} strokeWidth={8}/>
+        {text(d.code,77,365,36,134,transparent?fg:ink,'middle')}
+        {text(title,190,180,154,568,fg,'start',true)}
+        {a.showEnglish && text(d.en,194,239,48,556,muted)}
+        {text(d.operator,1170,42,28,382,muted,'end')}
+        {largeTransfers(834,68,342,94)}
+        {text(platform,1170,233,44,345,fg,'end')}
+        {referenceRoute(239,354,600,true)}
+        {text(d.destination,955,336,30,186,fg)}
+        {a.showArrow && arrow(1158,333,'right',1.2)}
+      </> : theme === 'sidebar' ? <>
+        {text(d.line,125,185,87,218,transparent?accent:ink,'middle')}
+        <path d="M28 222H222" stroke={transparent?accent:ink} strokeWidth={3}/>
+        {text(d.code,125,273,40,214,transparent?muted:ink,'middle')}
+        {text(platform,125,348,42,222,transparent?fg:ink,'middle')}
+        {text(title,286,180,154,506,fg,'start',true)}
+        {a.showEnglish && text(d.en,291,239,49,495,muted)}
+        {text(d.operator,1175,43,27,350,muted,'end')}
+        {largeTransfers(828,110,302,88)}
+        {referenceRoute(341,291,538)}
+        {text(d.destination,997,303,33,179)}
+      </> : heritage ? <>
+        <rect x={28} y={32} width={182} height={52} rx={8} fill={accent}/>
+        {text(d.line,119,72,43,167,ink,'middle')}
+        {text(d.code,119,115,29,195,muted,'middle')}
+        {text(title,600,181,154,568,fg,'middle',true)}
+        {a.showEnglish && text(d.en,600,242,49,526,muted,'middle')}
+        {text(d.operator,1174,53,27,277,muted,'end')}
+        {text(platform,30,229,45,253)}
+        {largeTransfers(956,190,218,49)}
+        {referenceRoute(348,292,400)}
+        {text(d.destination,892,307,31,250)}
       </> : <>
-        {text(d.line,40,43,24,250,accent)}{text(d.code,315,43,20,170,muted)}{text(d.operator,1160,39,16,550,muted,'end')}
-        {text(title,40,153,106,790,fg,'start',true)}{a.showEnglish && text(d.en,44,201,29,795,muted)}
-        {text('本站换乘',906,87,16,240,muted)}{badges(current,906,100,252)}{text(platform,1160,219,25,310,fg,'end')}
-        {text(d.destination,40,244,21,550,accent)}{text(d.status,620,244,19,220,accent)}{route(130,280,940)}
+        {text(d.line,36,46,32,240,accent)}{text(d.code,312,46,25,175,muted)}
+        {text(d.operator,1164,44,25,430,muted,'end')}
+        {text(title,36,185,132,725,fg,'start',true)}
+        {a.showEnglish && text(d.en,40,240,39,723,muted)}
+        {largeTransfers(839,96,325,72)}
+        {text(platform,1164,245,34,338,fg,'end')}
+        {referenceRoute(115,301,880)}
       </>}
+      {text(d.status,1168,389,20,400,accent,'end')}
     </>}
     {purpose === 'platform' && <>
       {!transparent && <rect width={600} height={80} fill={accent}/>}{text(d.line,300,55,32,490,transparent?accent:ink,'middle')}

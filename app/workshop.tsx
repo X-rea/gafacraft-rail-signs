@@ -8,10 +8,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
-import { WorkshopSign, PIXEL_FONT } from '@/components/workshop-sign';
-import { appearanceFor, INITIAL_STATION, INITIAL_TRANSFERS, PURPOSES, TEXTURES, THEMES } from '@/lib/workshop-model';
+import { WorkshopSign, PIXEL_FONT } from '@/components/workshop-sign-v2';
+import { appearanceFor, INITIAL_STATION, INITIAL_TRANSFERS, PURPOSES, TEXTURES, THEMES, FONTS, usesPixelFont } from '@/lib/workshop-model';
 import type { Appearance, Frame, Purpose, Slot, Station, Surface, Theme, Transfer } from '@/lib/workshop-model';
 import './workshop.css';
+import { STATION_ATTRIBUTES, emptyAttributes, visibleStops } from '@/lib/station-layout';
+import type { StationAttribute } from '@/lib/station-layout';
 
 function Field({ name, value, change }: { name:string; value:string; change:(value:string)=>void }) { return <label className="ws-field"><span>{name}</span><Input value={value} onChange={e=>change(e.target.value)} /></label>; }
 function Color({ name, value, change }: {name:string;value:string;change:(s:string)=>void}) { return <label className="ws-color"><span>{name}</span><div><input type="color" value={value} onChange={e=>change(e.target.value)} aria-label={name}/><code>{value.toUpperCase()}</code></div></label>; }
@@ -25,7 +27,18 @@ export default function Workshop({onLegacy}:{onLegacy:()=>void}) {
   const [station,setStation]=useState<Station>({...INITIAL_STATION});
   const [transfers,setTransfers]=useState<Transfer[]>(INITIAL_TRANSFERS.map(t=>({...t})));
   const [appearance,setAppearance]=useState<Appearance>(appearanceFor('modern'));
-  const [exportWidth,setExportWidth]=useState('1200');
+  const [attributes,setAttributes]=useState(emptyAttributes);
+  const [logo,setLogo]=useState('');
+  const routeState=visibleStops(station,attributes);
+  async function uploadLogo(file?:File){
+    if(!file)return;
+    if(!['image/png','image/jpeg'].includes(file.type)){setMessage('请选择 PNG 或 JPG 图片。');return;}
+    try{const data=await blobData(file);const img=new Image();await new Promise<void>((ok,fail)=>{img.onload=()=>ok();img.onerror=fail;img.src=data;});const canvas=document.createElement('canvas');canvas.width=256;canvas.height=256;const ctx=canvas.getContext('2d')!;const scale=Math.min(256/img.width,256/img.height);ctx.drawImage(img,(256-img.width*scale)/2,(256-img.height*scale)/2,img.width*scale,img.height*scale);setLogo(canvas.toDataURL('image/png'));setMessage('Logo 已添加，图片只在当前浏览器处理。');}catch{setMessage('图片无法读取，请换一张 PNG 或 JPG。');}
+  }
+  function toggleAttribute(slot:Slot,value:StationAttribute){setAttributes(prev=>({...prev,[slot]:prev[slot].includes(value)?prev[slot].filter(v=>v!==value):[...prev[slot],value]}));}
+  function choosePurpose(next:Purpose){setPurpose(next);setMessage('');if(next==='name')look('showEnglish',false);}
+  const exportWidth = purpose === 'platform' ? 256 : 768;
+  const exportHeight = purpose === 'platform' ? 512 : 256;
   const [busy,setBusy]=useState(false);
   const [message,setMessage]=useState('');
   const [pixelReady,setPixelReady]=useState(false);
@@ -37,20 +50,20 @@ export default function Workshop({onLegacy}:{onLegacy:()=>void}) {
   function chooseTheme(next:Theme){setTheme(next);setAppearance(a=>({...a,background:THEMES[next].background,foreground:THEMES[next].foreground,secondary:THEMES[next].secondary}));}
   function updateTransfer(id:number,patch:Partial<Transfer>){setTransfers(ts=>ts.map(t=>t.id===id?{...t,...patch}:t));}
   function addTransfer(slot:Slot){setTransfers(ts=>[...ts,{id:Date.now()+Math.random(),name:'新线路',color:'#387CB4',slot,side:'right',destination:''}]);}
-  function reset(){setStation({...INITIAL_STATION});setTransfers(INITIAL_TRANSFERS.map(t=>({...t})));setAppearance(appearanceFor(theme));setMessage('已恢复南薰站示例。');}
+  function reset(){setAttributes(emptyAttributes());setLogo('');setStation({...INITIAL_STATION});setTransfers(INITIAL_TRANSFERS.map(t=>({...t})));setAppearance(appearanceFor(theme));setMessage('已恢复南薰站示例。');}
   async function asset(path:string){if(cache.current.has(path))return cache.current.get(path)!;const response=await fetch(path);if(!response.ok)throw new Error('字体或背景资源未能加载，请刷新后重试。');const result=await blobData(await response.blob());cache.current.set(path,result);return result;}
   async function download(format:'png'|'svg') {
     setBusy(true);setMessage('');
     try {
-      if(theme==='pixel' && !pixelReady)throw new Error('点阵字体尚未就绪，请稍后再导出。');
+      if(usesPixelFont(theme,appearance.font) && !pixelReady)throw new Error('点阵字体尚未就绪，请稍后再导出。');
       await document.fonts.ready;
       const svg=document.getElementById('workshop-preview') as SVGSVGElement|null;
       if(!svg)throw new Error('预览尚未就绪。');
       const copy=svg.cloneNode(true) as SVGSVGElement;
       const width=Number(exportWidth),height=Math.round(width*spec.height/spec.width);
       copy.setAttribute('width',String(width));copy.setAttribute('height',String(height));
-      for(const image of Array.from(copy.querySelectorAll('image'))){const href=image.getAttribute('href');if(href)image.setAttribute('href',await asset(href));}
-      if(theme==='pixel'){
+      for(const image of Array.from(copy.querySelectorAll('image'))){const href=image.getAttribute('href');if(href&&!href.startsWith('data:'))image.setAttribute('href',await asset(href));}
+      if(usesPixelFont(theme,appearance.font)){
         const style=document.createElementNS('http://www.w3.org/2000/svg','style');style.textContent=`@font-face{font-family:GafaPixel;src:url(${await asset(PIXEL_FONT)}) format('woff2');font-weight:400;font-style:normal}`;copy.insertBefore(style,copy.firstChild);
       }
       const source=new XMLSerializer().serializeToString(copy);
@@ -72,12 +85,12 @@ export default function Workshop({onLegacy}:{onLegacy:()=>void}) {
     }catch(error){setMessage(error instanceof Error?error.message:'导出失败，请重试。');}finally{setBusy(false);}
   }
   const currentOnly=purpose==='transfer';
-  const slots:Slot[]=currentOnly?['current']:['previous','current','next'];
+  const slots:Slot[]=currentOnly?['current']:routeState.stops.map(s=>s.slot);
   return <main className="ws-shell">
     <header className="ws-header"><div className="ws-brand"><span className="ws-logo"><TrainFront size={23}/></span><div><strong>GAFAcraft <span>标识工坊</span></strong><small>铁路 · 站台 · 换乘</small></div></div><Button variant="outline" onClick={onLegacy}>旧版模板</Button></header>
     <div className="ws-workspace"><aside className="ws-controls" aria-label="站牌编辑器">
       <section className="ws-section"><div className="ws-section-title"><span>01</span><h2>用途与排版</h2></div>
-        <Label htmlFor="ws-purpose">标牌用途</Label><Select value={purpose} onValueChange={v=>setPurpose(v as Purpose)}><SelectTrigger id="ws-purpose"><SelectValue/></SelectTrigger><SelectContent>{Object.entries(PURPOSES).map(([key,p])=><SelectItem key={key} value={key}>{p.name}</SelectItem>)}</SelectContent></Select>
+        <Label htmlFor="ws-purpose">标牌用途</Label><Select value={purpose} onValueChange={v=>choosePurpose(v as Purpose)}><SelectTrigger id="ws-purpose"><SelectValue/></SelectTrigger><SelectContent>{Object.entries(PURPOSES).map(([key,p])=><SelectItem key={key} value={key}>{p.name}</SelectItem>)}</SelectContent></Select>
         <p className="ws-help">{spec.note}</p>
         <div className="ws-style-grid" aria-label="原创风格">{Object.entries(THEMES).map(([key,t])=><button key={key} onClick={()=>chooseTheme(key as Theme)} aria-pressed={theme===key} className={`ws-style-card ${theme===key?'is-selected':''}`}><div className={`ws-style-mini mini-${key}`} style={{background:t.background,color:t.foreground}}><span>南薰</span><i/></div><strong>{t.name}</strong><small>{t.note}</small></button>)}</div>
       </section>
@@ -86,12 +99,17 @@ export default function Workshop({onLegacy}:{onLegacy:()=>void}) {
           <TabsContent value="content" className="ws-fields">
             <Field name="本站中文" value={station.cn} change={v=>edit('cn',v)}/><Field name="本站英文 · 可留空" value={station.en} change={v=>edit('en',v)}/>
             {purpose!=='transfer' && <Field name="运行线路" value={station.line} change={v=>edit('line',v)}/>}
+            <Field name="区域 · 可留空" value={station.region||''} change={v=>edit('region',v)}/>
+            <Label htmlFor="ws-font">字体 · 所有风格均可选择</Label><Select value={appearance.font||'auto'} onValueChange={v=>look('font',v)}><SelectTrigger id="ws-font"><SelectValue/></SelectTrigger><SelectContent>{Object.entries(FONTS).map(([key,label])=><SelectItem key={key} value={key}>{label}</SelectItem>)}</SelectContent></Select>
+            {purpose==='comprehensive'&&(routeState.terminal||routeState.origin)&&<><div className="ws-divider">端点站序</div><div className="ws-choice-row">{['left','right'].map(side=><button key={side} aria-pressed={(station.endpointSide||(routeState.terminal?'right':'left'))===side} onClick={()=>edit('endpointSide',side)}>{side==='left'?'本站在最左':'本站在最右'}</button>)}</div><p className="ws-help">相邻车站已自动切换为端点站序，请填写第二个相邻站。</p></>}
             <Range name="站名 / 站台主文字" value={appearance.nameScale} min={70} max={120} step={5} unit="%" change={v=>look('nameScale',v)}/>
             <Range name="辅助文字大小" value={appearance.infoScale} min={80} max={120} step={5} unit="%" change={v=>look('infoScale',v)}/>
-            <Toggle name="显示英文" value={appearance.showEnglish} change={v=>look('showEnglish',v)}/>
-            {purpose==='comprehensive' && <><div className="ws-divider">相邻车站</div><div className="ws-two"><Field name="前一站" value={station.previous} change={v=>edit('previous',v)}/><Field name="后一站" value={station.next} change={v=>edit('next',v)}/><Field name="前站英文" value={station.previousEn} change={v=>edit('previousEn',v)}/><Field name="后站英文" value={station.nextEn} change={v=>edit('nextEn',v)}/></div><Button variant="outline" onClick={()=>{setStation(s=>({...s,previous:s.next,previousEn:s.nextEn,next:s.previous,nextEn:s.previousEn}));setTransfers(ts=>ts.map(t=>({...t,slot:t.slot==='previous'?'next':t.slot==='next'?'previous':'current'})));}}><ArrowLeftRight size={16}/> 对调前后站</Button><Toggle name="显示站序线路" value={appearance.showRoute} change={v=>look('showRoute',v)}/><Toggle name="显示列车方向箭头" value={appearance.showArrow} change={v=>look('showArrow',v)}/></>}
+            <Toggle name="粗体" value={appearance.bold!==false} change={v=>look('bold',v)}/><Toggle name="显示英文" value={appearance.showEnglish} change={v=>look('showEnglish',v)}/>
+            {purpose==='comprehensive' && <><div className="ws-divider">相邻车站</div><div className="ws-two"><Field name={routeState.origin&&!routeState.terminal?"后两站":"前一站"} value={routeState.origin&&!routeState.terminal?station.next2||'':station.previous} change={v=>edit(routeState.origin&&!routeState.terminal?'next2':'previous',v)}/><Field name={routeState.terminal?"前两站":"后一站"} value={routeState.terminal?station.previous2||'':station.next} change={v=>edit(routeState.terminal?'previous2':'next',v)}/><Field name={routeState.origin&&!routeState.terminal?"后两站英文":"前站英文"} value={routeState.origin&&!routeState.terminal?station.next2En||'':station.previousEn} change={v=>edit(routeState.origin&&!routeState.terminal?'next2En':'previousEn',v)}/><Field name={routeState.terminal?"前两站英文":"后站英文"} value={routeState.terminal?station.previous2En||'':station.nextEn} change={v=>edit(routeState.terminal?'previous2En':'nextEn',v)}/></div><Button variant="outline" onClick={()=>{setStation(s=>({...s,previous:s.next,previousEn:s.nextEn,next:s.previous,nextEn:s.previousEn,previous2:s.next2,previous2En:s.next2En,next2:s.previous2,next2En:s.previous2En}));setAttributes(a=>({...a,previous:a.next,next:a.previous,previous2:a.next2,next2:a.previous2}));setTransfers(ts=>ts.map(t=>({...t,slot:t.slot==='previous'?'next':t.slot==='next'?'previous':t.slot==='previous2'?'next2':t.slot==='next2'?'previous2':'current'})));}}><ArrowLeftRight size={16}/> 对调前后站</Button><Toggle name="显示相邻站英文" value={appearance.showStopEnglish===true} change={v=>look('showStopEnglish',v)}/><Toggle name="显示站序线路" value={appearance.showRoute} change={v=>look('showRoute',v)}/><Toggle name="显示列车方向箭头" value={appearance.showArrow} change={v=>look('showArrow',v)}/></>}
             {(purpose==='platform'||purpose==='comprehensive') && <><div className="ws-divider">乘车信息 · 留空即隐藏</div><div className="ws-two"><Field name="站台号" value={station.platform} change={v=>edit('platform',v)}/><Field name="股道号" value={station.track} change={v=>edit('track',v)}/></div><Field name="开往方向" value={station.destination} change={v=>edit('destination',v)}/></>}
-            {purpose==='comprehensive' && <><Field name="车站编号" value={station.code} change={v=>edit('code',v)}/><Field name="运营单位" value={station.operator} change={v=>edit('operator',v)}/><Field name="状态标识 · 如终点站，可留空" value={station.status} change={v=>edit('status',v)}/></>}
+            {purpose==='comprehensive' && <><Field name="车站编号" value={station.code} change={v=>edit('code',v)}/><Field name="运营单位" value={station.operator} change={v=>edit('operator',v)}/><Field name="补充标识 · 可留空" value={station.status} change={v=>edit('status',v)}/></>}
+            {purpose==='comprehensive'&&<section className="ws-attributes"><div className="ws-divider">站点属性 · 分站设置</div>{routeState.stops.map(({slot,cn})=><details key={slot} className="ws-station-attributes"><summary>{slot==='current'?'本站':slot==='previous'?'前一站':slot==='previous2'?'前两站':slot==='next2'?'后两站':'后一站'} · {cn}<span>{attributes[slot].length?attributes[slot].join('、'):'未选择属性'}</span></summary><div>{STATION_ATTRIBUTES.map(value=><button type="button" key={value} aria-pressed={attributes[slot].includes(value)} onClick={()=>toggleAttribute(slot,value)}>{value}</button>)}</div></details>)}{(routeState.terminal||routeState.origin)&&<p className="ws-help">{routeState.terminal?'终到站显示前两站、前一站和本站。':''}{routeState.origin?'始发站显示本站、后一站和后两站。':''}已填内容会保留，取消属性即可恢复。</p>}</section>}
+            <div className="ws-divider">站牌 Logo</div><label className="ws-field ws-logo-upload">{logo?<svg className="ws-logo-thumb" viewBox="0 0 96 96" role="img" aria-label="已上传的 Logo"><image href={logo} width="96" height="96" preserveAspectRatio="xMidYMid meet"/></svg>:<span className="ws-logo-placeholder" aria-hidden="true">＋</span>}<span>上传 PNG / JPG · 自动适配正方形</span><input type="file" accept="image/png,image/jpeg" onChange={e=>{void uploadLogo(e.target.files?.[0]);e.target.value='';}}/></label>{logo&&<div className="ws-row"><span>Logo 已添加</span><Button variant="outline" onClick={()=>setLogo('')}>移除 Logo</Button></div>}
             {purpose==='name' && <p className="ws-help">悬挂牌不显示前后站、换乘、站台和股道；切换牌型不会丢失这些内容。</p>}
           </TabsContent>
           <TabsContent value="transfer" className="ws-fields">
@@ -108,18 +126,16 @@ export default function Workshop({onLegacy}:{onLegacy:()=>void}) {
             <div className="ws-divider">可选边框 · 默认无边框</div><div className="ws-frame-grid">{(['none','line','double','corners'] as Frame[]).map((f,i)=><button key={f} aria-pressed={appearance.frame===f} onClick={()=>look('frame',f)}><span className={`frame-sample frame-${f}`}/>{['无边框','细线','双线','四角'][i]}</button>)}</div>
             {appearance.frame!=='none'&&<><Color name="边框颜色" value={appearance.frameColor} change={v=>look('frameColor',v)}/><Range name="边框宽度" value={appearance.frameWidth} min={2} max={20} step={2} unit=" px" change={v=>look('frameWidth',v)}/></>}
           </TabsContent>
-          <TabsContent value="color" className="ws-fields"><Color name="主要文字" value={appearance.foreground} change={v=>look('foreground',v)}/><Color name="英文与辅助文字" value={appearance.secondary} change={v=>look('secondary',v)}/><Color name="运行线路识别色" value={appearance.accent} change={v=>look('accent',v)}/><Button variant="outline" onClick={()=>chooseTheme(theme)}>恢复此风格配色</Button><p className="ws-help">换乘颜色在“换乘”页独立设置。线路色块上的文字自动使用深色或白色，保证可读性。</p>{theme==='pixel'&&<p className="ws-help">{pixelReady?'点阵字库已就绪。':'正在加载点阵字库…'}原生版使用 Fusion Pixel，非锯齿滤镜。</p>}</TabsContent>
+          <TabsContent value="color" className="ws-fields"><Color name="主要文字" value={appearance.foreground} change={v=>look('foreground',v)}/><Color name="英文与辅助文字" value={appearance.secondary} change={v=>look('secondary',v)}/><Color name="运行线路识别色" value={appearance.accent} change={v=>look('accent',v)}/><Button variant="outline" onClick={()=>chooseTheme(theme)}>恢复此风格配色</Button><p className="ws-help">换乘颜色在“换乘”页独立设置。线路色块上的文字自动使用深色或白色，保证可读性。</p>{usesPixelFont(theme,appearance.font)&&<p className="ws-help">{pixelReady?'点阵字库已就绪。':'正在加载点阵字库…'}原生版使用 Fusion Pixel，非锯齿滤镜。</p>}</TabsContent>
         </Tabs>
       </section>
       <div className="ws-reset"><Button variant="ghost" onClick={reset}><RotateCcw size={15}/> 恢复南薰站示例</Button></div>
-    </aside>
-    <section className="ws-preview" aria-label="实时预览"><div className="ws-preview-top"><div><span className="ws-eyebrow">SIGN WORKSPACE</span><h1>{spec.name}</h1><p>{THEMES[theme].name}</p></div><div className="ws-export"><Select value={exportWidth} onValueChange={setExportWidth}><SelectTrigger aria-label="导出分辨率"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="768">768 px 宽</SelectItem><SelectItem value="1200">1200 px 宽</SelectItem><SelectItem value="2400">2400 px 宽</SelectItem><SelectItem value="3600">3600 px 宽</SelectItem></SelectContent></Select><Button disabled={busy||(theme==='pixel'&&!pixelReady)} onClick={()=>download('png')}><Download size={17}/>{busy?'正在生成…':'下载 PNG'}</Button><Button variant="outline" disabled={busy||(theme==='pixel'&&!pixelReady)} onClick={()=>download('svg')}>SVG</Button></div></div>
-      <div className={`ws-canvas ${purpose==='platform'?'ws-canvas-portrait':''}`}><div className="ws-canvas-label">{spec.width} × {spec.height} · {purpose==='platform'?'2:3':'3:1'}</div><div className={`ws-artboard ${appearance.surface==='transparent'?'ws-checker':''}`} style={{aspectRatio:`${spec.width}/${spec.height}`}}><WorkshopSign station={station} appearance={appearance} purpose={purpose} theme={theme} transfers={transfers}/></div><div className="ws-canvas-caption">{purpose==='name'?'站名是主角，线路是辅助。':purpose==='transfer'?'在分岔口指向换乘通道。':purpose==='platform'?'确认站台，再确认乘车方向。':'站名优先，线路与服务信息分层。'}</div></div>
-      <div className="ws-message" role="status" aria-live="polite">{message}</div>
-      <div className="ws-specs"><div><span>建议画框比例</span><strong>{spec.blocks} 格</strong></div><div><span>导出大小</span><strong>{exportWidth} × {Math.round(Number(exportWidth)*spec.height/spec.width)} px</strong></div><div><span>背景</span><strong>{appearance.surface==='solid'?'纯色底面':appearance.surface==='transparent'?'透明叠字':TEXTURES.find(t=>t.id===appearance.texture)?.name}</strong></div></div>
-      <section className="ws-purpose-strip"><h2>同一内容，不同用途</h2><div>{Object.entries(PURPOSES).map(([key,p])=><button key={key} aria-pressed={purpose===key} onClick={()=>setPurpose(key as Purpose)}><span>{String(Object.keys(PURPOSES).indexOf(key)+1).padStart(2,'0')}</span><strong>{p.name}</strong><small>{p.note}</small></button>)}</div></section>
-      <p className="ws-disclaimer">南薰站初始信息为排版示例，请按服务器实际线路修改。仅用于非官方 Minecraft 创作；纹理为平面图片，不会赋予真实方块或发光特性。</p>
       <details className="ws-credits"><summary>字体与材质来源</summary><p>像素字库：<a href="https://github.com/TakWolf/fusion-pixel-font" target="_blank" rel="noreferrer">Fusion Pixel Font</a>，OFL-1.1，许可随项目附带。方块纹理：Minecraft 1.21.1，由 <a href="https://github.com/PrismarineJS/minecraft-assets" target="_blank" rel="noreferrer">PrismarineJS/minecraft-assets</a> 提供镜像，素材权利归 Mojang / Microsoft。与 Immersive Paintings 无隶属关系。</p></details>
+    </aside>
+    <section className="ws-preview" aria-label="实时预览"><div className="ws-preview-top"><div><span className="ws-eyebrow">SIGN WORKSPACE</span><h1>{spec.name}</h1><p>{THEMES[theme].name}</p></div><div className="ws-export"><span className="ws-export-size">{exportWidth} × {exportHeight} px</span><Button disabled={busy||(usesPixelFont(theme,appearance.font)&&!pixelReady)} onClick={()=>download('png')}><Download size={17}/>{busy?'正在生成…':'下载 PNG'}</Button><Button variant="outline" disabled={busy||(usesPixelFont(theme,appearance.font)&&!pixelReady)} onClick={()=>download('svg')}>SVG</Button></div></div>
+      <div className={`ws-canvas ${purpose==='platform'?'ws-canvas-portrait':''}`}><div className="ws-canvas-label">{exportWidth} × {exportHeight} px · {purpose==='platform'?'1:2':'3:1'}</div><div className={`ws-artboard ${appearance.surface==='transparent'?'ws-checker':''}`} style={{aspectRatio:`${spec.width}/${spec.height}`}}><WorkshopSign station={station} appearance={appearance} purpose={purpose} theme={theme} transfers={transfers} attributes={attributes} logo={logo}/></div><div className="ws-canvas-caption">{purpose==='name'?'站名是主角，线路是辅助。':purpose==='transfer'?'在分岔口指向换乘通道。':purpose==='platform'?'确认站台，再确认乘车方向。':'站名优先，线路与服务信息分层。'}</div></div>
+      <div className="ws-message" role="status" aria-live="polite">{message}</div>
+
     </section></div>
   </main>;
 }

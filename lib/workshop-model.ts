@@ -1,21 +1,24 @@
-export type Theme = 'modern' | 'sidebar' | 'heritage' | 'pixel';
+export type Theme = 'modern' | 'sidebar' | 'heritage' | 'pixel' | 'railway';
 export type Purpose = 'comprehensive' | 'name' | 'platform' | 'transfer';
 export type Surface = 'solid' | 'texture' | 'transparent';
 export type Frame = 'none' | 'line' | 'double' | 'corners';
-export type Slot = 'previous' | 'current' | 'next';
+export type Slot = 'previous' | 'current' | 'next' | 'previous2' | 'next2';
 export type Transfer = { id: number; name: string; color: string; slot: Slot; side: 'left' | 'right'; destination: string };
-export type Station = { cn: string; en: string; previous: string; previousEn: string; next: string; nextEn: string; line: string; code: string; operator: string; platform: string; track: string; destination: string; status: string; statusEn: string };
-export type Appearance = { surface: Surface; texture: string; background: string; foreground: string; secondary: string; accent: string; frame: Frame; frameColor: string; frameWidth: number; textureScale: number; textureOpacity: number; nameScale: number; infoScale: number; showEnglish: boolean; showRoute: boolean; showArrow: boolean };
+export type Station = { previous2?: string; previous2En?: string; next2?: string; next2En?: string; region?: string; endpointSide?: string; cn: string; en: string; previous: string; previousEn: string; next: string; nextEn: string; line: string; code: string; operator: string; platform: string; track: string; destination: string; status: string; statusEn: string };
+export type Appearance = { bold?: boolean; font?: string; showStopEnglish?: boolean; surface: Surface; texture: string; background: string; foreground: string; secondary: string; accent: string; frame: Frame; frameColor: string; frameWidth: number; textureScale: number; textureOpacity: number; nameScale: number; infoScale: number; showEnglish: boolean; showRoute: boolean; showArrow: boolean };
 export const THEMES: Record<Theme, { name: string; note: string; background: string; foreground: string; secondary: string }> = {
+  railway: { name: '现实铁路 · 广州地铁', note: '线路色带 / 圆形编号 / 居中站名', background: '#F7F7F2', foreground: '#172027', secondary: '#535E66' },
   modern: { name: '现代 · 横向分层', note: '大站名 / 底部连续站序', background: '#F5F5F0', foreground: '#172027', secondary: '#4F5B64' },
   sidebar: { name: '现代 · 侧栏分区', note: '线路侧栏 / 深色主区域', background: '#123450', foreground: '#FFFFFF', secondary: '#D6E2EA' },
   heritage: { name: '工业复古', note: '厚实衬线 / 居中对称', background: '#104C37', foreground: '#FFF4D9', secondary: '#DBDEC9' },
   pixel: { name: '原生像素', note: '真实点阵 / 方形站序', background: '#303438', foreground: '#FFF5DE', secondary: '#D6D6CF' },
 };
+export const FONTS = { auto: '跟随风格', sans: '现代黑体', serif: '工业宋体', pixel: '原生点阵', railway: '铁路黑体' };
+export function usesPixelFont(theme: Theme, font?: string) { return font === 'pixel' || ((!font || font === 'auto') && theme === 'pixel'); }
 export const PURPOSES: Record<Purpose, { name: string; note: string; width: number; height: number; blocks: string }> = {
   comprehensive: { name: '综合线路牌', note: '站名、相邻站、运行方向、换乘与站台信息', width: 1200, height: 400, blocks: '3 × 1' },
   name: { name: '悬挂站名牌', note: '仅显示本站、英文与运行线路，远处一眼识别', width: 1200, height: 400, blocks: '3 × 1' },
-  platform: { name: '站台乘车牌', note: '竖向突出站台号，辅以股道、线路和开往方向', width: 600, height: 900, blocks: '2 × 3' },
+  platform: { name: '站台乘车牌', note: '竖向突出站台号，辅以股道、线路和开往方向', width: 450, height: 900, blocks: '1 × 2' },
   transfer: { name: '换乘导向牌', note: '箭头表示步行方向，不表示列车运行方向', width: 1200, height: 400, blocks: '3 × 1' },
 };
 export const TEXTURES = [

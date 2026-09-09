@@ -8,9 +8,6 @@ const nextConfig: NextConfig = isStaticExport
       images: {
         unoptimized: true,
       },
-      typescript: {
-        tsconfigPath: "tsconfig.static.json",
-      },
     }
   : {};
 
